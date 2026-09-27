@@ -30,7 +30,8 @@ jobs:
           python-version: '3.13.15'
           architecture: ${{ matrix.arch }}
       - name: Install dependencies
-        run: python -m pip install --only-binary=:all: -r requirements.txt pyinstaller==6.22.3
+        run: >-
+          python -m pip install --only-binary=:all: -r requirements.txt pyinstaller==6.22.3
       - name: Build and verify native executable
         env:
           RELEASE_VERSION: ${{ inputs.version }}
