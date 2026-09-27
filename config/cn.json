@@ -1,0 +1,7 @@
+{
+  "region": "cn",
+  "endpoint": "https://www.workbuddy.cn",
+  "platform": "workbuddy",
+  "version": "5.6.2",
+  "applicationName": "WorkBuddy"
+}

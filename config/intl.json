@@ -1,0 +1,7 @@
+{
+  "region": "intl",
+  "endpoint": "https://www.workbuddy.ai",
+  "platform": "workbuddy-ai",
+  "version": "5.6.2",
+  "applicationName": "workbuddy-ai"
+}
