@@ -6,7 +6,7 @@ Python 多账号模型网关，支持国内 / 国际账号、WebUI、余额与�
 
 <img width="2538" height="1400" alt="02feabeb-ff93-44d6-8376-3c346d1cc2c9" src="https://github.com/user-attachments/assets/52ecf49a-479d-4a4d-a514-0d025919098a" />
 
-一键运行，可视化web界面
+一键运行，可视化web管理界面
 
 
 
