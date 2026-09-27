@@ -77,7 +77,7 @@ import time
 from .storage import uid
 class ResponsesWriter:
     def __init__(self,body,emit):
-        self.emit=emit;self.seq=0;self.items=[];self.calls={};self.parts={};self.message=None;self.reasoning=None;self.finish_reason=None;self.custom_args={};self.specs,_=tool_specs(body)
+        self.emit=emit;self.seq=0;self.items=[];self.calls={};self.parts={};self.message=None;self.reasoning=None;self.finish_reason=None;self.custom_args={};self.specs,_=tool_specs(body);self.closed=set()
         self.response={'id':uid('resp_'),'object':'response','created_at':int(time.time()),'status':'in_progress','error':None,'incomplete_details':None,'model':body['model'],'output':[],'usage':None,'parallel_tool_calls':body.get('parallel_tool_calls',True),'tool_choice':body.get('tool_choice','auto'),'tools':body.get('tools',[]),'metadata':body.get('metadata',{}),'store':False}
     async def event(self,t,**p):
         if self.emit:await self.emit(t,{'type':t,'sequence_number':self.seq,**copy.deepcopy(p)})
@@ -91,12 +91,17 @@ class ResponsesWriter:
         for ch in c.get('choices',[]):
             require(ch.get('index',0)==0,'Responses supports one choice',502);d=ch.get('delta') or {}
             if d.get('reasoning_content'):
+                if self.message is not None and self.message not in self.closed:
+                    await self.close_item(self.message,True);self.message=None;self.parts={}
+                if self.reasoning in self.closed:self.reasoning=None
                 if self.reasoning is None:
                     self.reasoning=len(self.items);item={'id':uid('rs_'),'type':'reasoning','summary':[]};self.items.append(item);await self.event('response.output_item.added',output_index=self.reasoning,item=item)
                     item['summary'].append({'type':'summary_text','text':''});await self.event('response.reasoning_summary_part.added',item_id=item['id'],output_index=self.reasoning,summary_index=0,part=item['summary'][0])
                 item=self.items[self.reasoning];item['summary'][0]['text']+=d['reasoning_content'];await self.event('response.reasoning_summary_text.delta',item_id=item['id'],output_index=self.reasoning,summary_index=0,delta=d['reasoning_content'])
             for field,typ in [('content','output_text'),('refusal','refusal')]:
                 if not d.get(field):continue
+                if self.reasoning is not None:await self.close_item(self.reasoning)
+                if self.message in self.closed:self.message=None;self.parts={}
                 if self.message is None:
                     self.message=len(self.items);self.items.append({'id':uid('msg_'),'type':'message','status':'in_progress','role':'assistant','content':[]});await self.event('response.output_item.added',output_index=self.message,item=self.items[-1])
                 item=self.items[self.message];key='text' if typ=='output_text' else 'refusal'
@@ -106,6 +111,8 @@ class ResponsesWriter:
                     item['content'].append(part);await self.event('response.content_part.added',item_id=item['id'],output_index=self.message,content_index=self.parts[typ],part=part)
                 i=self.parts[typ];item['content'][i][key]+=d[field];await self.event('response.'+typ+'.delta',item_id=item['id'],output_index=self.message,content_index=i,delta=d[field],**({'logprobs':[]} if typ=='output_text' else {}))
             for t in d.get('tool_calls') or []:
+                if self.reasoning is not None:await self.close_item(self.reasoning)
+                if self.message is not None:await self.close_item(self.message,True)
                 ti=t['index'];f=t.get('function') or {}
                 if ti not in self.calls:
                     require(t.get('id') and f.get('name'),'Initial tool delta requires id and name',502,'invalid_tool_call');spec=self.specs.get(f['name'],{'name':f['name'],'namespace':None,'kind':'function'})
@@ -125,17 +132,24 @@ class ResponsesWriter:
             except ValueError:raise Fault(502,'Malformed free-form tool wrapper','invalid_tool_call')
             require(isinstance(payload,dict) and isinstance(payload.get('input'),str),'Missing custom tool input',502,'invalid_tool_call');item['input']=payload['input']
             await self.event('response.custom_tool_call_input.delta',item_id=item['id'],output_index=self.calls[ti],delta=item['input'])
-        for i,item in enumerate(self.items):
-            if item['type']=='reasoning':
-                for j,p in enumerate(item['summary']):
-                    await self.event('response.reasoning_summary_text.done',item_id=item['id'],output_index=i,summary_index=j,text=p['text']);await self.event('response.reasoning_summary_part.done',item_id=item['id'],output_index=i,summary_index=j,part=p)
-            elif item['type'] in ('function_call','custom_tool_call'):
-                item['status']='completed';custom=item['type']=='custom_tool_call';field='input' if custom else 'arguments';await self.event('response.'+('custom_tool_call_input' if custom else 'function_call_arguments')+'.done',item_id=item['id'],output_index=i,name=item['name'],**{field:item[field]})
-            else:
-                item['status']='completed'
-                for j,p in enumerate(item['content']):
-                    field='text' if p['type']=='output_text' else 'refusal';await self.event('response.'+p['type']+'.done',item_id=item['id'],output_index=i,content_index=j,**{field:p[field]});await self.event('response.content_part.done',item_id=item['id'],output_index=i,content_index=j,part=p)
-            await self.event('response.output_item.done',output_index=i,item=item)
+        for i in range(len(self.items)):
+            await self.close_item(i)
         self.response.update(output=self.items,status='incomplete' if self.finish_reason in ('length','content_filter') else 'completed')
         if self.response['status']=='incomplete':self.response['incomplete_details']={'reason':'max_output_tokens' if self.finish_reason=='length' else 'content_filter'}
         await self.event('response.'+self.response['status'],response=self.response);return self.response
+
+    async def close_item(self,i,phase=None):
+        if i in self.closed:return
+        item=self.items[i]
+        if item.get('type')=='message':item.update(phase=('commentary' if phase or self.calls else 'final_answer'))
+        if item['type']=='reasoning':
+            for j,p in enumerate(item['summary']):
+                await self.event('response.reasoning_summary_text.done',item_id=item['id'],output_index=i,summary_index=j,text=p['text']);await self.event('response.reasoning_summary_part.done',item_id=item['id'],output_index=i,summary_index=j,part=p)
+        elif item['type'] in ('function_call','custom_tool_call'):
+            item['status']='completed';custom=item['type']=='custom_tool_call';field='input' if custom else 'arguments';await self.event('response.'+('custom_tool_call_input' if custom else 'function_call_arguments')+'.done',item_id=item['id'],output_index=i,name=item['name'],**{field:item[field]})
+        else:
+            item['status']='completed'
+            for j,p in enumerate(item['content']):
+                field='text' if p['type']=='output_text' else 'refusal';await self.event('response.'+p['type']+'.done',item_id=item['id'],output_index=i,content_index=j,**{field:p[field]});await self.event('response.content_part.done',item_id=item['id'],output_index=i,content_index=j,part=p)
+        await self.event('response.output_item.done',output_index=i,item=item)
+        self.closed.add(i)

@@ -1,4 +1,4 @@
-import asyncio, codecs, copy, json, time, os
+﻿import asyncio, codecs, copy, json, time, os
 from .storage import require, Fault, uid
 
 def validate_chat(b):
@@ -140,7 +140,17 @@ def normalize(c,seen):
     require(isinstance(c,dict) and not c.get('error') and c.get('code') in (None,0,200,'0','200'),'Upstream stream error',502,'upstream_error')
     require(isinstance(c.get('choices'),list),'Missing choices',502,'invalid_stream_chunk')
     for ch in c['choices']:
-        d=ch.get('delta') or ch.pop('message',{}) or {}; ch['delta']=d
+        delta=ch.get('delta'); snapshot=ch.pop('message',None)
+        is_snapshot=not delta and isinstance(snapshot,dict)
+        d=copy.deepcopy(snapshot if is_snapshot else delta or {}); ch['delta']=d
+        for field in ('content','reasoning_content','refusal'):
+            if d.get(field) is None:continue
+            require(isinstance(d[field],str),'Invalid text delta',502)
+            key=('text',ch.get('index',0),field); previous=seen.get(key,'')
+            if is_snapshot:
+                require(d[field].startswith(previous),'Completion snapshot conflicts with streamed text',502,'invalid_stream_snapshot')
+                full=d[field]; d[field]=full[len(previous):]; seen[key]=full
+            else:seen[key]=previous+d[field]
         if 'function_call' in d and not any((d['function_call'] or {}).get(k) for k in ('name','arguments')): del d['function_call']
         for t in (d.get('tool_calls') or []):
             require(type(t.get('index')) is int and 0<=t['index']<1024,'Invalid tool index',502)

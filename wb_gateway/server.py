@@ -1,3 +1,4 @@
+﻿from . import __version__
 import asyncio, copy, ipaddress, json, os, secrets, time, urllib.parse, uuid
 from pathlib import Path
 from aiohttp import web, ClientSession, ClientTimeout, ClientError
@@ -370,7 +371,7 @@ class Gateway:
         raise Fault(401,'Invalid management key or expired session','invalid_api_key')
     async def handle(self,req):
         path=req.path; method=req.method
-        if path=='/health': return jresponse({'status':'ok','version':'4.4.0','implementation':'python','capabilities':{'independent':True,'regions':['cn','intl'],'login':True,'streaming':True,'tools':True,'responses':True,'messages':True}})
+        if path=='/health': return jresponse({'status':'ok','version':__version__,'implementation':'python','capabilities':{'independent':True,'regions':['cn','intl'],'login':True,'streaming':True,'tools':True,'responses':True,'messages':True}})
         static={'/':'index.html','/ui':'index.html','/ui/':'index.html','/ui/theme.js':'theme.js','/theme.js':'theme.js','/ui/app.js':'app.js','/ui/style.css':'style.css','/ui/styles.css':'styles.css','/app.js':'app.js','/style.css':'style.css','/styles.css':'styles.css'}
         if path in static and method=='GET':
             p=self.root/'web'/static[path]; require(p.exists(),'Asset not found',404,'not_found'); return web.FileResponse(p,headers={'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"})
