@@ -2,8 +2,12 @@
 
 Python 多账号模型网关，支持国内 / 国际账号、WebUI、余额与签到、模型倍率、调用记录和分区 API Key。不依赖原版桌面客户端或 Node.js 后端。
 
-非官方项目，仅用于你有权使用的账号与接口。
+非官方项目，仅用于你有权使用的账号与接口。   
+
+<img width="2538" height="1400" alt="02feabeb-ff93-44d6-8376-3c346d1cc2c9" src="https://github.com/user-attachments/assets/52ecf49a-479d-4a4d-a514-0d025919098a" />
+
 一键运行，可视化web界面
+
 
 
 ## 运行
