@@ -1,7 +1,7 @@
 ﻿import base64, hashlib, json, os, secrets, time, uuid
 from pathlib import Path
 from datetime import datetime, timezone
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from .crypto import AESGCM
 
 def now(): return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
 def stamp(): return int(time.time()*1000)
